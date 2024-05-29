@@ -1,95 +1,97 @@
 #!/usr/bin/env python3
-"""
-function called filter_datum
-that returns the log message obfuscated:
-"""
-
-from typing import List
-import re
+"""A custom logger"""
 import logging
-from os import environ
+import re
 import mysql.connector
+from typing import List
+from os import environ
 
-PII_FIELDS = ('email', 'phone', 'ssn', 'password', 'name')
+PII_FIELDS = ('name', 'email', 'phone', 'ssn', 'password')
 
 
-def filter_datum(
-    fields: List[str], redaction: str, message: str, separator: str
-) -> str:
-    """
-    uses regex to redact sensitve
-    information from a log message
-    """
-    for i in fields:
-        message = re.sub(f"{i}=.*?{separator}",
-                         f"{i}={redaction}{separator}", message)
+def filter_datum(fields: List[str], redaction: str,
+                 message: str, separator: str) -> str:
+    """Filter data and obfuscate necessary fields"""
+    for x in fields:
+        message = re.sub(f'{x}=.*?{separator}',
+                         f"{x}={redaction}{separator}", message)
     return message
 
 
 class RedactingFormatter(logging.Formatter):
     """ Redacting Formatter class
-        """
+    """
 
     REDACTION = "***"
     FORMAT = "[HOLBERTON] %(name)s %(levelname)s %(asctime)-15s: %(message)s"
     SEPARATOR = ";"
 
-    def __init__(self, fields):
+    def __init__(self, fields: List[str]):
+        """Initializes the formatter
+        Args:
+            fields (List[str]): the list of fields to be obsfucated
         """
-        initialize arguments
-        """
-        super(RedactingFormatter, self).__init__(self.FORMAT)
         self.fields = fields
+        super(RedactingFormatter, self).__init__(self.FORMAT)
 
     def format(self, record: logging.LogRecord) -> str:
-        """
-        format records by redacting sensitive info
-        """
-        record.msg = filter_datum(self.fields, self.REDACTION,
-                                  record.getMessage(), self.SEPARATOR)
-        return super(RedactingFormatter, self).format(record)
+        """Custom formatter for our custom logger"""
+        log_msg = super().format(record)
+        formatted = filter_datum(self.fields,
+                                 self.REDACTION, log_msg, self.SEPARATOR)
+        return formatted
 
 
 def get_logger() -> logging.Logger:
+    """Returns a logger object with uses out custom
+    formatter and logs to standard output
+    Returns:
+        logging.Logger: the logger output
     """
-    returns a logging.Logger object.
-    """
-    user_data = logging.getLogger('user_data')
-    user_data.setLevel(logging.INFO)
-    stream_handler = logging.StreamHandler()
-    formatter = RedactingFormatter.format()
-    return user_data
+    formatter = RedactingFormatter(list(PII_FIELDS))
+    logger = logging.getLogger('user_data')
+    handler = logging.StreamHandler()
+    logger.propagate = False
+    handler.setFormatter(formatter)
+    logger.setLevel(logging.INFO)
+    logger.addHandler(handler)
+    return logger
 
 
-def get_db():
+def get_db() -> mysql.connector.MySQLConnection:
+    """This establishes a connection to a specified database
+    Returns:
+        mysql.connector.connection: A connection
     """
-    setting up db connection
-    """
-    db_config = {
-        "host": environ.get("PERSONAL_DATA_DB_HOST", "localhost"),
-        "user": environ.get("PERSONAL_DATA_DB_USERNAME", "root"),
-        "password": environ.get("PERSONAL_DATA_DB_PASSWORD", ""),
-        "database": environ.get("PERSONAL_DATA_DB_NAME")
-    }
-    connection = mysql.connector.connection.MySQLConnection(**db_config)
-
+    host = environ.get('PERSONAL_DATA_DB_HOST', "localhost")
+    user = environ.get('PERSONAL_DATA_DB_USERNAME', 'root')
+    pwd = environ.get('PERSONAL_DATA_DB_PASSWORD', '')
+    db = environ.get('PERSONAL_DATA_DB_NAME', "")
+    connection = mysql.connector.connection.MySQLConnection(
+        host=host,
+        user=user,
+        password=pwd,
+        database=db
+    )
     return connection
 
 
-def main():
+def main() -> None:
+    """This function reads from a database and logs it
+    to the standard output
     """
-    retrieve and fromat data in db
-    """
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT * FROM users;")
-    field_names = [i[0] for i in cursor.description]
-
+    conn = get_db()
     logger = get_logger()
+    cursor = conn.cursor()
+    query = 'SELECT * FROM users;'
+    cursor.execute(query)
+    results = cursor.fetchall()
+    fields = ['name', 'email', 'phone', 'ssn', 'password',
+              'ip', 'last_login', 'user_agent']
+    for x in results:
+        message = "; ".join(f'{key}={val}' for key, val in zip(fields, x))
+        logger.info(message)
 
-    for row in cursor:
-        str_row = ''.join(f'{f}={str(r)}; ' for r, f in zip(row, field_names))
-        logger.info(str_row.strip())
 
-    cursor.close()
-    db.close()
+if __name__ == '__main__':
+    main()

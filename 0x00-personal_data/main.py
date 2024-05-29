@@ -3,11 +3,12 @@
 Main file
 """
 
-hash_password = __import__('encrypt_password').hash_password
-is_valid = __import__('encrypt_password').is_valid
+get_db = __import__('filtered_logger').get_db
 
-password = "MyAmazingPasswrd"
-false_pwd = 'djvdjfdj'
-encrypted_password = hash_password(password)
-print(encrypted_password)
-print(is_valid(encrypted_password, false_pwd))
+db = get_db()
+cursor = db.cursor()
+cursor.execute("SELECT COUNT(*) FROM users;")
+for row in cursor:
+    print(row[0])
+cursor.close()
+db.close()
